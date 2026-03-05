@@ -1,0 +1,54 @@
+import aiosqlite
+
+
+CREATE_USERS = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id INTEGER UNIQUE NOT NULL,
+    language TEXT NOT NULL DEFAULT 'en',
+    first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    group_id INTEGER REFERENCES admin_groups(id),
+    topic_id INTEGER
+)
+"""
+
+CREATE_ADMIN_GROUPS = """
+CREATE TABLE IF NOT EXISTS admin_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_group_id INTEGER UNIQUE NOT NULL,
+    topic_count INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT 1,
+    registered_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+CREATE_CONVERSATIONS = """
+CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    status TEXT NOT NULL DEFAULT 'ai',
+    ai_enabled BOOLEAN NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    closed_at DATETIME,
+    closed_by INTEGER
+)
+"""
+
+CREATE_MESSAGES = """
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    role TEXT NOT NULL,
+    text TEXT NOT NULL,
+    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
+
+async def init_db(db_path: str) -> None:
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(CREATE_ADMIN_GROUPS)
+        await db.execute(CREATE_USERS)
+        await db.execute(CREATE_CONVERSATIONS)
+        await db.execute(CREATE_MESSAGES)
+        await db.commit()
