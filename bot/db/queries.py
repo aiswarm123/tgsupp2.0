@@ -38,13 +38,21 @@ async def get_group_by_telegram_id(
     }
 
 
-async def register_group(db: aiosqlite.Connection, telegram_group_id: int) -> int:
+async def register_group(db: aiosqlite.Connection, telegram_group_id: int) -> tuple[int, bool]:
+    """Register a group. Returns (group_id, is_new). is_new=False when already registered."""
     cur = await db.execute(
         "INSERT OR IGNORE INTO admin_groups (telegram_group_id) VALUES (?)",
         (telegram_group_id,),
     )
     await db.commit()
-    return cur.lastrowid
+    if cur.lastrowid:
+        return cur.lastrowid, True
+    # Duplicate: fetch existing id
+    async with db.execute(
+        "SELECT id FROM admin_groups WHERE telegram_group_id = ?", (telegram_group_id,)
+    ) as cur2:
+        row = await cur2.fetchone()
+        return row[0], False
 
 
 async def increment_topic_count(db: aiosqlite.Connection, group_id: int) -> int:
@@ -205,13 +213,67 @@ async def get_conversation_by_id(
 # ── Messages ──────────────────────────────────────────────────────────────────
 
 async def save_message(
-    db: aiosqlite.Connection, conversation_id: int, role: str, text: str
+    db: aiosqlite.Connection,
+    conversation_id: int,
+    role: str,
+    text: str,
+    sender_id: Optional[int] = None,
 ) -> None:
     await db.execute(
-        "INSERT INTO messages (conversation_id, role, text) VALUES (?, ?, ?)",
-        (conversation_id, role, text),
+        "INSERT INTO messages (conversation_id, role, text, sender_id) VALUES (?, ?, ?, ?)",
+        (conversation_id, role, text, sender_id),
     )
     await db.commit()
+
+
+# ── Stats ──────────────────────────────────────────────────────────────────────
+
+async def get_stats(db: aiosqlite.Connection) -> dict:
+    async with db.execute(
+        "SELECT COUNT(*) FROM conversations WHERE status != 'closed'"
+    ) as cur:
+        open_count = (await cur.fetchone())[0]
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM conversations WHERE status = 'closed'"
+    ) as cur:
+        closed_count = (await cur.fetchone())[0]
+
+    # Average seconds from conversation creation to first agent reply
+    async with db.execute(
+        """
+        SELECT AVG((julianday(m.timestamp) - julianday(c.created_at)) * 86400.0)
+        FROM conversations c
+        JOIN messages m ON m.conversation_id = c.id
+        WHERE m.role = 'agent'
+          AND m.id = (
+              SELECT MIN(id) FROM messages
+              WHERE conversation_id = c.id AND role = 'agent'
+          )
+        """
+    ) as cur:
+        row = await cur.fetchone()
+        avg_response_time = row[0] if row and row[0] is not None else None
+
+    # Active agents: distinct sender_ids with role='agent' that replied in last 24h
+    async with db.execute(
+        """
+        SELECT COUNT(DISTINCT sender_id)
+        FROM messages
+        WHERE role = 'agent'
+          AND sender_id IS NOT NULL
+          AND timestamp >= datetime('now', '-24 hours')
+        """
+    ) as cur:
+        row = await cur.fetchone()
+        active_agents = row[0] if row else 0
+
+    return {
+        "open_count": open_count,
+        "closed_count": closed_count,
+        "avg_response_time": avg_response_time,
+        "active_agents": active_agents,
+    }
 
 
 async def get_conversation_history(
@@ -226,6 +288,10 @@ async def get_conversation_history(
     result = []
     for role, text in rows:
         # Map DB roles to AI roles
-        ai_role = "assistant" if role in ("ai", "agent") else "user"
-        result.append({"role": ai_role, "content": text})
+        if role == "ai":
+            result.append({"role": "assistant", "content": text})
+        elif role == "agent":
+            result.append({"role": "user", "content": f"[Support Agent]: {text}"})
+        else:
+            result.append({"role": "user", "content": text})
     return result

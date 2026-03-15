@@ -27,8 +27,36 @@ async def cmd_register_group(message: Message, db: aiosqlite.Connection) -> None
     if chat.type not in ("supergroup", "group"):
         await message.reply("This command must be used in a forum supergroup.")
         return
-    await queries.register_group(db, chat.id)
-    await message.reply(f"Group {chat.id} registered as a support group.")
+    group_id, is_new = await queries.register_group(db, chat.id)
+    if not is_new:
+        await message.reply(f"This group is already registered (ID: {group_id}).")
+        return
+    await message.reply(f"✅ Group {chat.id} registered as a support group (ID: {group_id}).")
+
+
+# ── /stats ────────────────────────────────────────────────────────────────────
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message, db: aiosqlite.Connection) -> None:
+    stats = await queries.get_stats(db)
+    avg_rt = stats["avg_response_time"]
+    if avg_rt is None:
+        avg_str = "N/A"
+    elif avg_rt < 60:
+        avg_str = f"{avg_rt:.0f}s"
+    elif avg_rt < 3600:
+        avg_str = f"{avg_rt / 60:.1f}m"
+    else:
+        avg_str = f"{avg_rt / 3600:.1f}h"
+
+    await message.reply(
+        "📊 <b>Support Stats</b>\n\n"
+        f"Open tickets: {stats['open_count']}\n"
+        f"Closed tickets: {stats['closed_count']}\n"
+        f"Avg first response: {avg_str}\n"
+        f"Active agents (24h): {stats['active_agents']}",
+        parse_mode="HTML",
+    )
 
 
 # ── /toggle_ai ────────────────────────────────────────────────────────────────
@@ -187,7 +215,7 @@ async def handle_admin_reply(
         await queries.set_conversation_status(db, conv_id, "human")
         return
 
-    await queries.save_message(db, conv_id, "agent", text)
+    await queries.save_message(db, conv_id, "agent", text, sender_id=message.from_user.id)
     await queries.set_ai_enabled(db, conv_id, False)
     await queries.set_conversation_status(db, conv_id, "human")
 

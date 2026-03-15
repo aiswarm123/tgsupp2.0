@@ -1,16 +1,21 @@
 from bot.config import settings
 
+# Module-level singletons — initialized once at import time
+if settings.ai_provider == "claude":
+    from anthropic import AsyncAnthropic as _AsyncAnthropic
+    _claude_client = _AsyncAnthropic(api_key=settings.ai_api_key)
+    _openai_client = None
+else:
+    from openai import AsyncOpenAI as _AsyncOpenAI
+    _claude_client = None
+    _openai_client = _AsyncOpenAI(
+        api_key=settings.ai_api_key,
+        base_url=settings.ai_base_url or None,
+    )
+
 
 async def send_message(history: list[dict], system_prompt: str) -> str:
-    """Send message to AI provider and return reply text.
-
-    Args:
-        history: List of {"role": "user"/"assistant", "content": "..."} dicts.
-        system_prompt: System prompt for the AI.
-
-    Returns:
-        AI reply text.
-    """
+    """Send message to AI provider and return reply text."""
     if settings.ai_provider == "claude":
         return await _send_claude(history, system_prompt)
     else:
@@ -18,10 +23,7 @@ async def send_message(history: list[dict], system_prompt: str) -> str:
 
 
 async def _send_claude(history: list[dict], system_prompt: str) -> str:
-    import anthropic
-
-    client = anthropic.AsyncAnthropic(api_key=settings.ai_api_key)
-    response = await client.messages.create(
+    response = await _claude_client.messages.create(
         model=settings.ai_model,
         max_tokens=1024,
         system=system_prompt,
@@ -31,15 +33,8 @@ async def _send_claude(history: list[dict], system_prompt: str) -> str:
 
 
 async def _send_openai(history: list[dict], system_prompt: str) -> str:
-    from openai import AsyncOpenAI
-
-    kwargs = {"api_key": settings.ai_api_key}
-    if settings.ai_base_url:
-        kwargs["base_url"] = settings.ai_base_url
-
-    client = AsyncOpenAI(**kwargs)
     messages = [{"role": "system", "content": system_prompt}] + history
-    response = await client.chat.completions.create(
+    response = await _openai_client.chat.completions.create(
         model=settings.ai_model,
         messages=messages,
     )

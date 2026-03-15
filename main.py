@@ -14,7 +14,7 @@ from bot.db.models import init_db
 from bot.handlers import admin, user
 from bot.middlewares.i18n import I18nMiddleware
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
 
 
 class _DbMiddleware:
