@@ -8,6 +8,7 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
+from bot.config import settings
 from bot.db import queries
 from bot.keyboards.inline import admin_ticket_kb
 
@@ -19,6 +20,9 @@ router = Router()
 
 @router.message(Command("register_group"))
 async def cmd_register_group(message: Message, db: aiosqlite.Connection) -> None:
+    if message.from_user.id not in settings.admin_ids:
+        await message.reply("Unauthorized.")
+        return
     chat = message.chat
     if chat.type not in ("supergroup", "group"):
         await message.reply("This command must be used in a forum supergroup.")
@@ -33,6 +37,9 @@ async def cmd_register_group(message: Message, db: aiosqlite.Connection) -> None
 async def cmd_toggle_ai(
     message: Message, db: aiosqlite.Connection, t: Callable[[str], str]
 ) -> None:
+    if message.from_user.id not in settings.admin_ids:
+        await message.reply("Unauthorized.")
+        return
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("Usage: /toggle_ai <user_id>")
