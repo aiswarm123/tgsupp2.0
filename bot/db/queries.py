@@ -18,6 +18,26 @@ async def get_active_group(db: aiosqlite.Connection) -> Optional[dict]:
     return {"id": row[0], "telegram_group_id": row[1], "topic_count": row[2]}
 
 
+async def get_group_by_telegram_id(
+    db: aiosqlite.Connection, telegram_group_id: int
+) -> Optional[dict]:
+    """Return a registered admin group by its Telegram chat ID, or None."""
+    async with db.execute(
+        "SELECT id, telegram_group_id, topic_count, is_active FROM admin_groups "
+        "WHERE telegram_group_id = ?",
+        (telegram_group_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "telegram_group_id": row[1],
+        "topic_count": row[2],
+        "is_active": bool(row[3]),
+    }
+
+
 async def register_group(db: aiosqlite.Connection, telegram_group_id: int) -> int:
     cur = await db.execute(
         "INSERT OR IGNORE INTO admin_groups (telegram_group_id) VALUES (?)",
@@ -63,6 +83,24 @@ async def get_user(db: aiosqlite.Connection, telegram_id: int) -> Optional[dict]
     async with db.execute(
         "SELECT id, telegram_id, language, group_id, topic_id FROM users WHERE telegram_id = ?",
         (telegram_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "telegram_id": row[1],
+        "language": row[2],
+        "group_id": row[3],
+        "topic_id": row[4],
+    }
+
+
+async def get_user_by_id(db: aiosqlite.Connection, user_id: int) -> Optional[dict]:
+    """Return a user row by internal primary key."""
+    async with db.execute(
+        "SELECT id, telegram_id, language, group_id, topic_id FROM users WHERE id = ?",
+        (user_id,),
     ) as cur:
         row = await cur.fetchone()
     if row is None:
