@@ -113,8 +113,8 @@ async def create_user(
     db: aiosqlite.Connection,
     telegram_id: int,
     language: str,
-    group_id: int,
-    topic_id: int,
+    group_id: Optional[int] = None,
+    topic_id: Optional[int] = None,
 ) -> int:
     cur = await db.execute(
         "INSERT INTO users (telegram_id, language, group_id, topic_id) VALUES (?, ?, ?, ?)",
@@ -295,6 +295,10 @@ async def get_all_faq(db: aiosqlite.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# Alias used by user-facing handlers
+get_faq_items = get_all_faq
+
+
 async def get_faq_by_id(db: aiosqlite.Connection, faq_id: int) -> Optional[dict]:
     async with db.execute(
         "SELECT id, question, answer, media_file_id, position FROM faq_items WHERE id = ?",
@@ -302,6 +306,10 @@ async def get_faq_by_id(db: aiosqlite.Connection, faq_id: int) -> Optional[dict]
     ) as cur:
         row = await cur.fetchone()
     return dict(row) if row else None
+
+
+# Alias used by user-facing handlers
+get_faq_item = get_faq_by_id
 
 
 async def create_faq(
@@ -375,6 +383,7 @@ async def reorder_faq(db: aiosqlite.Connection, faq_id: int, new_position: int) 
         "UPDATE faq_items SET position = ? WHERE id = ?", (new_position, faq_id)
     )
     await db.commit()
+
 
 
 async def get_conversation_history(

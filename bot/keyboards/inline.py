@@ -49,3 +49,18 @@ def faq_confirm_delete_kb(faq_id: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="No", callback_data="faq_del_no"),
         ]
     ])
+
+
+def faq_user_kb(items: list[dict]) -> InlineKeyboardMarkup:
+    """Inline keyboard with one button per FAQ item."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=item["question"], callback_data=f"faq:{item['id']}")]
+        for item in items
+    ])
+
+
+def faq_back_kb() -> InlineKeyboardMarkup:
+    """Single back button to return to FAQ list."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="\u2190 Back", callback_data="faq:back")]
+    ])
