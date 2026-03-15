@@ -36,7 +36,7 @@ async def register_group(db: aiosqlite.Connection, telegram_group_id: int) -> tu
         (telegram_group_id,),
     )
     await db.commit()
-    if cur.lastrowid:
+    if cur.rowcount > 0:
         return cur.lastrowid, True
     # Duplicate: fetch existing id
     async with db.execute(

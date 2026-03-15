@@ -6,7 +6,7 @@ from typing import Callable, Optional
 import aiosqlite
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from aiogram.filters import Filter
 
@@ -19,8 +19,9 @@ router = Router()
 
 
 class IsAdmin(Filter):
-    async def __call__(self, message: Message) -> bool:
-        return message.from_user is not None and message.from_user.id in settings.admin_ids
+    async def __call__(self, event: TelegramObject) -> bool:
+        from_user = getattr(event, "from_user", None)
+        return from_user is not None and from_user.id in settings.admin_ids
 
 
 _is_admin = IsAdmin()
