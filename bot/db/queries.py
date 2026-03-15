@@ -285,6 +285,98 @@ async def get_stats(db: aiosqlite.Connection) -> dict:
     }
 
 
+# ── FAQ ───────────────────────────────────────────────────────────────────────
+
+async def get_all_faq(db: aiosqlite.Connection) -> list[dict]:
+    async with db.execute(
+        "SELECT id, question, answer, media_file_id, position FROM faq_items ORDER BY position ASC"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_faq_by_id(db: aiosqlite.Connection, faq_id: int) -> Optional[dict]:
+    async with db.execute(
+        "SELECT id, question, answer, media_file_id, position FROM faq_items WHERE id = ?",
+        (faq_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def create_faq(
+    db: aiosqlite.Connection,
+    question: str,
+    answer: str,
+    media_file_id: Optional[str] = None,
+) -> int:
+    async with db.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM faq_items") as cur:
+        next_pos = (await cur.fetchone())[0]
+    cur = await db.execute(
+        "INSERT INTO faq_items (question, answer, media_file_id, position) VALUES (?, ?, ?, ?)",
+        (question, answer, media_file_id, next_pos),
+    )
+    await db.commit()
+    return cur.lastrowid
+
+
+async def update_faq(
+    db: aiosqlite.Connection,
+    faq_id: int,
+    question: Optional[str] = None,
+    answer: Optional[str] = None,
+    media_file_id: Optional[str] = None,
+) -> None:
+    updates, params = [], []
+    if question is not None:
+        updates.append("question = ?")
+        params.append(question)
+    if answer is not None:
+        updates.append("answer = ?")
+        params.append(answer)
+    if media_file_id is not None:
+        updates.append("media_file_id = ?")
+        params.append(media_file_id)
+    if not updates:
+        return
+    params.append(faq_id)
+    await db.execute(
+        f"UPDATE faq_items SET {', '.join(updates)} WHERE id = ?", params
+    )
+    await db.commit()
+
+
+async def delete_faq(db: aiosqlite.Connection, faq_id: int) -> None:
+    await db.execute("DELETE FROM faq_items WHERE id = ?", (faq_id,))
+    await db.commit()
+
+
+async def reorder_faq(db: aiosqlite.Connection, faq_id: int, new_position: int) -> None:
+    async with db.execute("SELECT position FROM faq_items WHERE id = ?", (faq_id,)) as cur:
+        row = await cur.fetchone()
+    if row is None:
+        return
+    old_position = row[0]
+    if new_position == old_position:
+        return
+    if new_position < old_position:
+        await db.execute(
+            "UPDATE faq_items SET position = position + 1 "
+            "WHERE position >= ? AND position < ?",
+            (new_position, old_position),
+        )
+    else:
+        await db.execute(
+            "UPDATE faq_items SET position = position - 1 "
+            "WHERE position > ? AND position <= ?",
+            (old_position, new_position),
+        )
+    await db.execute(
+        "UPDATE faq_items SET position = ? WHERE id = ?", (new_position, faq_id)
+    )
+    await db.commit()
+
+
 async def get_conversation_history(
     db: aiosqlite.Connection, conversation_id: int
 ) -> list[dict]:
