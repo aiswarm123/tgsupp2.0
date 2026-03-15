@@ -106,7 +106,11 @@ async def handle_close(
     db: aiosqlite.Connection,
     t: Callable[[str], str],
 ) -> None:
-    conv_id = int(callback.data.split(":")[1])
+    try:
+        conv_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
     conv = await queries.get_conversation_by_id(db, conv_id)
     if conv is None:
         await callback.answer("Conversation not found.", show_alert=True)
@@ -144,10 +148,29 @@ async def handle_toggle_ai(
     db: aiosqlite.Connection,
     t: Callable[[str], str],
 ) -> None:
-    conv_id = int(callback.data.split(":")[1])
+    try:
+        conv_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        await callback.answer()
+        return
     conv = await queries.get_conversation_by_id(db, conv_id)
     if conv is None:
         await callback.answer("Conversation not found.", show_alert=True)
+        return
+
+    # Issue #19: verify the conversation's user belongs to the group where
+    # this callback originated — prevents cross-group toggle operations.
+    origin_group = await queries.get_group_by_telegram_id(db, callback.message.chat.id)
+    if origin_group is None:
+        await callback.answer("Unrecognised group.", show_alert=True)
+        return
+
+    user = await queries.get_user_by_id(db, conv["user_id"])
+    if user is None or user["group_id"] != origin_group["id"]:
+        await callback.answer(
+            "Permission denied: conversation belongs to a different group.",
+            show_alert=True,
+        )
         return
 
     new_state = not conv["ai_enabled"]
