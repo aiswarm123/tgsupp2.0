@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import html
 import logging
 from typing import Callable, Optional
 
 import aiosqlite
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
 
@@ -31,9 +33,9 @@ async def _get_group_tg_id(db: aiosqlite.Connection, group_id: int) -> Optional[
 
 
 async def _maybe_warn_capacity(bot: Bot, db: aiosqlite.Connection, count: int) -> None:
-    if count == _WARN_80:
+    if _WARN_80 <= count < _WARN_95:
         text = f"⚠️ Admin group is at 80% capacity ({count}/9500 topics)."
-    elif count == _WARN_95:
+    elif count >= _WARN_95:
         text = f"🚨 Admin group is at 95% capacity ({count}/9500 topics). Please register a new group soon."
     else:
         return
@@ -61,29 +63,42 @@ async def _ensure_user_and_conv(
             return None, None
 
         name = (tg_user.full_name or tg_user.username or str(tg_user.id))[:128]
-        forum_topic = await bot.create_forum_topic(
-            chat_id=group["telegram_group_id"],
-            name=name,
-        )
+        try:
+            forum_topic = await bot.create_forum_topic(
+                chat_id=group["telegram_group_id"],
+                name=name,
+            )
+        except TelegramAPIError:
+            logger.exception(
+                "Failed to create forum topic in group %s for user %s",
+                group["telegram_group_id"],
+                tg_user.id,
+            )
+            return None, None
+
         topic_id = forum_topic.message_thread_id
 
-        user_id = await queries.create_user(
-            db,
-            telegram_id=tg_user.id,
-            language=lang,
-            group_id=group["id"],
-            topic_id=topic_id,
-        )
-        user = {
-            "id": user_id,
-            "telegram_id": tg_user.id,
-            "language": lang,
-            "group_id": group["id"],
-            "topic_id": topic_id,
-        }
-
-        count = await queries.increment_topic_count(db, group["id"])
-        await _maybe_warn_capacity(bot, db, count)
+        try:
+            user_id = await queries.create_user(
+                db,
+                telegram_id=tg_user.id,
+                language=lang,
+                group_id=group["id"],
+                topic_id=topic_id,
+            )
+        except aiosqlite.IntegrityError:
+            # Race condition: another message created the user concurrently
+            user = await queries.get_user(db, tg_user.id)
+        else:
+            user = {
+                "id": user_id,
+                "telegram_id": tg_user.id,
+                "language": lang,
+                "group_id": group["id"],
+                "topic_id": topic_id,
+            }
+            count = await queries.increment_topic_count(db, group["id"])
+            await _maybe_warn_capacity(bot, db, count)
 
     conv = await queries.get_open_conversation(db, user["id"])
     if conv is None:
@@ -91,6 +106,33 @@ async def _ensure_user_and_conv(
         conv = {"id": conv_id, "status": "ai", "ai_enabled": True}
 
     return user, conv
+
+
+def _message_type_label(message: Message) -> str:
+    """Return a descriptive label for non-text message types."""
+    if message.sticker:
+        return "[sticker]"
+    if message.voice:
+        return "[voice]"
+    if message.video_note:
+        return "[video_note]"
+    if message.video:
+        return "[video]"
+    if message.audio:
+        return "[audio]"
+    if message.photo:
+        return "[photo]"
+    if message.document:
+        return "[document]"
+    if message.animation:
+        return "[animation]"
+    if message.location:
+        return "[location]"
+    if message.contact:
+        return "[contact]"
+    if message.poll:
+        return "[poll]"
+    return "[unsupported]"
 
 
 # ── Handlers ───────────────────────────────────────────────────────────────────
@@ -133,7 +175,7 @@ async def _process_user_message(
         await message.answer(t("no_group"))
         return
 
-    text = message.text or message.caption or ""
+    text = message.text or message.caption or _message_type_label(message)
     await queries.save_message(db, conv["id"], "user", text)
 
     tg_group_id = await _get_group_tg_id(db, user["group_id"])
@@ -166,7 +208,7 @@ async def _process_user_message(
         try:
             await bot.send_message(
                 chat_id=tg_group_id,
-                text=f"🤖 {ai_text}",
+                text=f"🤖 {html.escape(ai_text)}",
                 message_thread_id=user["topic_id"],
                 parse_mode="HTML",
                 reply_markup=admin_ticket_kb(conv["id"], ai_enabled=True),
@@ -208,7 +250,7 @@ async def handle_escalate(
     if tg_group_id is None:
         return
 
-    user_mention = f'<a href="tg://user?id={tg_user.id}">{tg_user.full_name}</a>'
+    user_mention = f'<a href="tg://user?id={tg_user.id}">{html.escape(tg_user.full_name or str(tg_user.id))}</a>'
     priority_text = t("priority_flag").format(user_mention=user_mention)
     try:
         await bot.send_message(
