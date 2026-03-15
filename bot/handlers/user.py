@@ -259,7 +259,7 @@ async def handle_private_message(
         return
 
     await queries.save_message(db, conv["id"], "ai", ai_text)
-    await message.answer(ai_text, reply_markup=talk_to_human_kb())
+    await message.answer(html.escape(ai_text), reply_markup=talk_to_human_kb())
 
     if tg_group_id:
         try:
