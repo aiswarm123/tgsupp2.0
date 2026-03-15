@@ -395,13 +395,19 @@ async def get_conversation_history(
         (conversation_id,),
     ) as cur:
         rows = await cur.fetchall()
-    result = []
+    result: list[dict] = []
     for role, text in rows:
         # Map DB roles to AI roles
         if role == "ai":
-            result.append({"role": "assistant", "content": text})
+            mapped_role = "assistant"
         elif role == "agent":
-            result.append({"role": "user", "content": f"[Support Agent]: {text}"})
+            mapped_role = "user"
+            text = f"[Support Agent]: {text}"
         else:
-            result.append({"role": "user", "content": text})
+            mapped_role = "user"
+        # Merge consecutive same-role messages (e.g. user + agent both map to "user")
+        if result and result[-1]["role"] == mapped_role:
+            result[-1]["content"] += f"\n{text}"
+        else:
+            result.append({"role": mapped_role, "content": text})
     return result
