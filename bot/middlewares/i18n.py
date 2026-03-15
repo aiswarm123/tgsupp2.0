@@ -98,18 +98,30 @@ class I18nMiddleware(BaseMiddleware):
     @staticmethod
     async def _get_stored_lang(db: Any, telegram_id: int) -> str | None:
         """Return stored language for ``telegram_id``, or None if not found."""
-        row = await db.fetchone(
+        # Fix #1: aiosqlite has no db.fetchone(); use cursor.fetchone() instead.
+        async with db.execute(
             "SELECT language FROM users WHERE telegram_id = ?",
             (telegram_id,),
-        )
-        if row and row["language"] in SUPPORTED_LANGS:
-            return row["language"]
+        ) as cur:
+            row = await cur.fetchone()
+        if row and row[0] in SUPPORTED_LANGS:
+            return row[0]
         return None
 
     @staticmethod
     async def _store_lang(db: Any, telegram_id: int, lang: str) -> None:
-        """Persist detected language (only update the language column)."""
+        """Persist detected language for returning users only."""
+        # Fix #3: only UPDATE when the row already exists; INSERT OR IGNORE would
+        # silently create an incomplete row — create_user() owns new-user inserts.
+        async with db.execute(
+            "SELECT 1 FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cur:
+            exists = await cur.fetchone()
+        if not exists:
+            return
         await db.execute(
             "UPDATE users SET language = ? WHERE telegram_id = ?",
             (lang, telegram_id),
         )
+        # Fix #2: commit so the language write is not silently rolled back.
+        await db.commit()
