@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     DB_PATH: str = "./data/bot.db"
     # Comma-separated or JSON list of admin Telegram user IDs for capacity alerts
     ADMIN_IDS: List[int] = []
+    LOG_LEVEL: str = "INFO"
 
     model_config = {"env_file": ".env"}
 

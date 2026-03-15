@@ -1,5 +1,6 @@
 {
   "ai_reply_footer": "This is an automated response. Press the button below to speak with a human agent.",
   "human_request_ack": "Your request has been flagged as priority. A human agent will reply shortly.",
-  "ticket_closed": "Your support ticket has been closed. Feel free to message us again if you need help."
+  "ticket_closed": "Your support ticket has been closed. Feel free to message us again if you need help.",
+  "talk_to_human": "Talk to human 🙋"
 }

@@ -10,7 +10,7 @@ from bot.config import settings
 from bot.db.models import init_db
 from bot.handlers import admin, user
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
 logger = logging.getLogger(__name__)
 
 

@@ -81,14 +81,24 @@ async def get_admin_group_by_telegram_id(
         return _row_to_dict(cursor, row) if row else None
 
 
-async def register_admin_group(db: aiosqlite.Connection, telegram_group_id: int) -> int:
-    cursor = await db.execute(
-        "INSERT INTO admin_groups (telegram_group_id, topic_count, is_active, registered_at) "
-        "VALUES (?, 0, 1, ?)",
-        (telegram_group_id, datetime.utcnow().isoformat()),
-    )
-    await db.commit()
-    return cursor.lastrowid
+async def register_admin_group(
+    db: aiosqlite.Connection, telegram_group_id: int
+) -> tuple[int, bool]:
+    """Register a group. Returns (group_id, is_new). is_new=False means already registered."""
+    try:
+        cursor = await db.execute(
+            "INSERT INTO admin_groups (telegram_group_id, topic_count, is_active, registered_at) "
+            "VALUES (?, 0, 1, ?)",
+            (telegram_group_id, datetime.utcnow().isoformat()),
+        )
+        await db.commit()
+        return cursor.lastrowid, True
+    except aiosqlite.IntegrityError:
+        async with db.execute(
+            "SELECT id FROM admin_groups WHERE telegram_group_id = ?", (telegram_group_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0], False
 
 
 async def increment_topic_count(db: aiosqlite.Connection, group_id: int) -> int:
@@ -185,11 +195,16 @@ async def set_conversation_status(
 # ---------------------------------------------------------------------------
 
 async def add_message(
-    db: aiosqlite.Connection, conv_id: int, role: str, text: str
+    db: aiosqlite.Connection,
+    conv_id: int,
+    role: str,
+    text: str,
+    sender_id: Optional[int] = None,
 ) -> int:
     cursor = await db.execute(
-        "INSERT INTO messages (conversation_id, role, text, timestamp) VALUES (?, ?, ?, ?)",
-        (conv_id, role, text, datetime.utcnow().isoformat()),
+        "INSERT INTO messages (conversation_id, role, text, timestamp, sender_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (conv_id, role, text, datetime.utcnow().isoformat(), sender_id),
     )
     await db.commit()
     return cursor.lastrowid
@@ -203,7 +218,13 @@ async def get_conversation_history(
         (conv_id,),
     ) as cursor:
         rows = await cursor.fetchall()
-        return [{"role": r[0], "content": r[1]} for r in rows]
+        result = []
+        for role, text in rows:
+            if role == "agent":
+                result.append({"role": "user", "content": f"[Support Agent]: {text}"})
+            else:
+                result.append({"role": role, "content": text})
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +258,22 @@ async def get_stats(db: aiosqlite.Connection) -> dict:
         row = await cursor.fetchone()
         avg_response_time = row[0] if row and row[0] is not None else None
 
+    # Active agents: distinct sender_ids with role='agent' that replied in last 24h
+    async with db.execute(
+        """
+        SELECT COUNT(DISTINCT sender_id)
+        FROM messages
+        WHERE role = 'agent'
+          AND sender_id IS NOT NULL
+          AND timestamp >= datetime('now', '-24 hours')
+        """
+    ) as cursor:
+        row = await cursor.fetchone()
+        active_agents = row[0] if row else 0
+
     return {
         "open_count": open_count,
         "closed_count": closed_count,
         "avg_response_time": avg_response_time,
+        "active_agents": active_agents,
     }

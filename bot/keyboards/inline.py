@@ -1,3 +1,5 @@
+from typing import Callable, Optional
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -33,12 +35,15 @@ def admin_controls_keyboard(
     return builder.as_markup()
 
 
-def user_escalation_keyboard(conv_id: int) -> InlineKeyboardMarkup:
+def user_escalation_keyboard(
+    conv_id: int, t: Optional[Callable[[str], str]] = None
+) -> InlineKeyboardMarkup:
     """Button shown to the user under AI replies."""
+    label = t("talk_to_human") if t is not None else "Talk to human 🙋"
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text="Talk to human 🙋",
+            text=label,
             callback_data=f"human_request:{conv_id}",
         )
     )

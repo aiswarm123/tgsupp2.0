@@ -80,7 +80,7 @@ async def handle_agent_reply(message: Message, bot: Bot, db: aiosqlite.Connectio
         )
         return
 
-    await queries.add_message(db, conv["id"], "agent", text)
+    await queries.add_message(db, conv["id"], "agent", text, sender_id=message.from_user.id)
 
     # Disable AI auto-replies and mark conversation as human-handled
     if conv["ai_enabled"]:
@@ -163,14 +163,13 @@ async def handle_register_group(message: Message, bot: Bot, db: aiosqlite.Connec
         await message.reply("Only group administrators can register a support group.")
         return
 
-    existing = await queries.get_admin_group_by_telegram_id(db, message.chat.id)
-    if existing:
+    group_id, is_new = await queries.register_admin_group(db, message.chat.id)
+    if not is_new:
         await message.reply(
-            f"This group is already registered (ID: {existing['id']})."
+            f"This group is already registered (ID: {group_id})."
         )
         return
 
-    group_id = await queries.register_admin_group(db, message.chat.id)
     await message.reply(
         f"✅ Group registered successfully (internal ID: {group_id}). "
         "New users will be routed to this group."
@@ -195,7 +194,8 @@ async def handle_stats(message: Message, db: aiosqlite.Connection) -> None:
         "📊 <b>Support Stats</b>\n\n"
         f"Open tickets: {stats['open_count']}\n"
         f"Closed tickets: {stats['closed_count']}\n"
-        f"Avg first response: {avg_str}",
+        f"Avg first response: {avg_str}\n"
+        f"Active agents (24h): {stats['active_agents']}",
         parse_mode="HTML",
     )
 
