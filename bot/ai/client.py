@@ -14,8 +14,10 @@ else:
     )
 
 
-async def send_message(history: list[dict], system_prompt: str) -> str:
-    """Send message to AI provider and return reply text."""
+async def send_message(history: list[dict], system_prompt: str) -> str | None:
+    """Send message to AI provider and return reply text, or None if AI is unavailable."""
+    if not settings.ai_available:
+        return None
     if settings.ai_provider == "claude":
         return await _send_claude(history, system_prompt)
     else:
