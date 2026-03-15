@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS messages (
 )
 """
 
+CREATE_FAQ_ITEMS = """
+CREATE TABLE IF NOT EXISTS faq_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    media_file_id TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 _INDICES = [
     "CREATE INDEX IF NOT EXISTS idx_users_topic_id ON users(topic_id)",
     "CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)",
@@ -60,6 +71,7 @@ async def init_db(db_path: str) -> None:
         await db.execute(CREATE_USERS)
         await db.execute(CREATE_CONVERSATIONS)
         await db.execute(CREATE_MESSAGES)
+        await db.execute(CREATE_FAQ_ITEMS)
         for idx_sql in _INDICES:
             await db.execute(idx_sql)
         # Migration: add sender_id to existing databases

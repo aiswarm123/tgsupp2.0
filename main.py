@@ -5,13 +5,14 @@ from typing import Any, Awaitable, Callable
 
 import aiosqlite
 from aiogram import Bot, Dispatcher
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import TelegramObject
 
 from bot.config import settings
 from bot.db.models import init_db
-from bot.handlers import admin, user
+from bot.handlers import admin, faq_admin, user
 from bot.middlewares.i18n import I18nMiddleware
 
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
@@ -43,7 +44,7 @@ async def main() -> None:
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dp = Dispatcher()
+    dp = Dispatcher(storage=MemoryStorage())
 
     db_mw = _DbMiddleware(settings.db_path)
     dp.message.middleware(db_mw)
@@ -52,6 +53,7 @@ async def main() -> None:
     dp.message.middleware(I18nMiddleware())
     dp.callback_query.middleware(I18nMiddleware())
 
+    dp.include_router(faq_admin.router)
     dp.include_router(user.router)
     dp.include_router(admin.router)
 
