@@ -68,6 +68,26 @@ async def handle_close(
     t: Callable[[str], str],
 ) -> None:
     conv_id = int(callback.data.split(":")[1])
+    conv = await queries.get_conversation_by_id(db, conv_id)
+    if conv is None:
+        await callback.answer("Conversation not found.", show_alert=True)
+        return
+
+    # Issue #11: verify the conversation's user belongs to the group where
+    # this callback originated — prevents cross-group close operations.
+    origin_group = await queries.get_group_by_telegram_id(db, callback.message.chat.id)
+    if origin_group is None:
+        await callback.answer("Unrecognised group.", show_alert=True)
+        return
+
+    user = await queries.get_user_by_id(db, conv["user_id"])
+    if user is None or user["group_id"] != origin_group["id"]:
+        await callback.answer(
+            "Permission denied: conversation belongs to a different group.",
+            show_alert=True,
+        )
+        return
+
     closed_by = callback.from_user.id
     await queries.set_conversation_status(db, conv_id, "closed", closed_by=closed_by)
     await callback.answer(t("ticket_closed_admin"))
@@ -112,15 +132,26 @@ async def handle_admin_reply(
     db: aiosqlite.Connection,
 ) -> None:
     """Forward agent replies from admin topic to the corresponding user."""
-    if message.from_user and message.from_user.is_bot:
+    # Issue #22: guard against channel posts and anonymous senders
+    if not message.from_user:
         return
 
+    if message.from_user.is_bot:
+        return
+
+    # Issue #14: only process messages from registered admin groups
+    admin_group = await queries.get_group_by_telegram_id(db, message.chat.id)
+    if admin_group is None:
+        return
+
+    # Issue #3: filter by both group_id and topic_id to prevent cross-group
+    # misdelivery when the same topic_id appears in multiple forum groups.
     async with db.execute(
         "SELECT u.telegram_id, c.id AS conv_id FROM users u "
         "JOIN conversations c ON c.user_id = u.id "
-        "WHERE u.topic_id = ? AND c.status != 'closed' "
+        "WHERE u.group_id = ? AND u.topic_id = ? AND c.status != 'closed' "
         "ORDER BY c.id DESC LIMIT 1",
-        (message.message_thread_id,),
+        (admin_group["id"], message.message_thread_id),
     ) as cur:
         row = await cur.fetchone()
 
@@ -128,8 +159,25 @@ async def handle_admin_reply(
         return
 
     user_telegram_id, conv_id = row[0], row[1]
+
+    # Issue #12: handle non-text messages (photos, voice, stickers, etc.)
     text = message.text or message.caption or ""
     if not text:
+        logger.warning(
+            "Agent sent non-text message (type=%s) in conv %s; forwarding media to user %s",
+            message.content_type,
+            conv_id,
+            user_telegram_id,
+        )
+        try:
+            await message.copy_to(chat_id=user_telegram_id)
+        except Exception:
+            logger.exception(
+                "Failed to forward media message to user %s", user_telegram_id
+            )
+        await queries.save_message(db, conv_id, "agent", f"[{message.content_type}]")
+        await queries.set_ai_enabled(db, conv_id, False)
+        await queries.set_conversation_status(db, conv_id, "human")
         return
 
     await queries.save_message(db, conv_id, "agent", text)
