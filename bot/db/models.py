@@ -40,9 +40,16 @@ CREATE TABLE IF NOT EXISTS messages (
     conversation_id INTEGER NOT NULL REFERENCES conversations(id),
     role TEXT NOT NULL,
     text TEXT NOT NULL,
-    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    sender_id INTEGER
 )
 """
+
+_INDICES = [
+    "CREATE INDEX IF NOT EXISTS idx_users_topic_id ON users(topic_id)",
+    "CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)",
+]
 
 
 async def init_db(db_path: str) -> None:
@@ -51,4 +58,11 @@ async def init_db(db_path: str) -> None:
         await db.execute(CREATE_USERS)
         await db.execute(CREATE_CONVERSATIONS)
         await db.execute(CREATE_MESSAGES)
+        for idx_sql in _INDICES:
+            await db.execute(idx_sql)
+        # Migration: add sender_id to existing databases
+        try:
+            await db.execute("ALTER TABLE messages ADD COLUMN sender_id INTEGER")
+        except Exception:
+            pass  # Column already exists
         await db.commit()

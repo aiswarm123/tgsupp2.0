@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     ai_system_prompt: str = "You are a helpful support assistant."
     db_path: str = "./data/bot.db"
     admin_ids: List[int] = []
+    log_level: str = "INFO"
 
 
 settings = Settings()

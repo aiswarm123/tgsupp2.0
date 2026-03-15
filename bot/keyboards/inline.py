@@ -1,9 +1,12 @@
+from typing import Callable, Optional
+
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def talk_to_human_kb() -> InlineKeyboardMarkup:
+def talk_to_human_kb(t: Optional[Callable[[str], str]] = None) -> InlineKeyboardMarkup:
+    label = t("talk_to_human") if t is not None else "Talk to human 🙋"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Talk to human 🙋", callback_data="escalate")]
+        [InlineKeyboardButton(text=label, callback_data="escalate")]
     ])
 
 
