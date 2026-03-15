@@ -1,3 +1,5 @@
+from typing import List
+
 from pydantic_settings import BaseSettings
 
 
@@ -9,6 +11,7 @@ class Settings(BaseSettings):
     ai_base_url: str = ""
     ai_system_prompt: str = "You are a helpful support assistant."
     db_path: str = "./data/bot.db"
+    admin_ids: List[int] = []
 
     class Config:
         env_file = ".env"
