@@ -47,17 +47,22 @@ async def register_group(db: aiosqlite.Connection, telegram_group_id: int) -> tu
 
 
 async def increment_topic_count(db: aiosqlite.Connection, group_id: int) -> int:
-    """Increment topic_count and return new value."""
+    """Increment topic_count, auto-deactivate at capacity, and return new value."""
     await db.execute(
         "UPDATE admin_groups SET topic_count = topic_count + 1 WHERE id = ?",
         (group_id,),
     )
-    await db.commit()
     async with db.execute(
         "SELECT topic_count FROM admin_groups WHERE id = ?", (group_id,)
     ) as cur:
         row = await cur.fetchone()
-    return row[0]
+    count = row[0]
+    if count >= 9500:
+        await db.execute(
+            "UPDATE admin_groups SET is_active = 0 WHERE id = ?", (group_id,)
+        )
+    await db.commit()
+    return count
 
 
 async def get_group_topic_count(db: aiosqlite.Connection, group_id: int) -> int:

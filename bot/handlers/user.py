@@ -162,6 +162,7 @@ async def handle_faq_item(
     callback: CallbackQuery,
     db: aiosqlite.Connection,
     bot: Bot,
+    t: Callable[[str], str],
 ) -> None:
     faq_id_str = callback.data.split(":", 1)[1]
     try:
@@ -177,7 +178,7 @@ async def handle_faq_item(
 
     if item["media_file_id"]:
         # Send photo with answer as caption, then back button as separate message
-        await callback.message.edit_text(item["answer"], reply_markup=faq_back_kb())
+        await callback.message.edit_text(item["answer"], reply_markup=faq_back_kb(t))
         try:
             await bot.send_photo(
                 chat_id=callback.message.chat.id,
@@ -186,7 +187,7 @@ async def handle_faq_item(
         except Exception:
             logger.exception("Failed to send FAQ media for item %s", faq_id)
     else:
-        await callback.message.edit_text(item["answer"], reply_markup=faq_back_kb())
+        await callback.message.edit_text(item["answer"], reply_markup=faq_back_kb(t))
 
     await callback.answer()
 
@@ -252,14 +253,14 @@ async def handle_private_message(
         ai_text = await send_message(history, settings.ai_system_prompt)
     except Exception:
         logger.exception("AI call failed for conversation %s", conv["id"])
-        await message.answer(t("ai_unavailable"), reply_markup=talk_to_human_kb())
+        await message.answer(t("ai_unavailable"), reply_markup=talk_to_human_kb(t))
         return
 
     if ai_text is None:
         return
 
     await queries.save_message(db, conv["id"], "ai", ai_text)
-    await message.answer(html.escape(ai_text), reply_markup=talk_to_human_kb())
+    await message.answer(html.escape(ai_text), reply_markup=talk_to_human_kb(t))
 
     if tg_group_id:
         try:

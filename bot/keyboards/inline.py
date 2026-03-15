@@ -59,8 +59,9 @@ def faq_user_kb(items: list[dict]) -> InlineKeyboardMarkup:
     ])
 
 
-def faq_back_kb() -> InlineKeyboardMarkup:
+def faq_back_kb(t: Optional[Callable[[str], str]] = None) -> InlineKeyboardMarkup:
     """Single back button to return to FAQ list."""
+    label = t("back") if t is not None else "\u2190 Back"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="\u2190 Back", callback_data="faq:back")]
+        [InlineKeyboardButton(text=label, callback_data="faq:back")]
     ])
