@@ -150,6 +150,9 @@ async def handle_faq_back(
     t: Callable[[str], str],
 ) -> None:
     faq_items = await queries.get_faq_items(db)
+    if not isinstance(callback.message, Message):
+        await callback.answer()
+        return
     if faq_items:
         await callback.message.edit_text(t("welcome"), reply_markup=faq_user_kb(faq_items))
     else:
@@ -172,6 +175,10 @@ async def handle_faq_item(
 
     item = await queries.get_faq_item(db, faq_id)
     if item is None:
+        await callback.answer()
+        return
+
+    if not isinstance(callback.message, Message):
         await callback.answer()
         return
 
@@ -297,10 +304,11 @@ async def handle_escalate(
     await queries.escalate_to_human(db, conv["id"])
 
     await callback.answer(t("escalated"))
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    if isinstance(callback.message, Message):
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
 
     tg_group_id = await queries.get_group_tg_id(db, user["group_id"])
     if tg_group_id is None:

@@ -391,12 +391,12 @@ async def get_conversation_history(
 ) -> list[dict]:
     """Return messages as list of {role, content} dicts for AI client."""
     async with db.execute(
-        "SELECT role, text FROM messages WHERE conversation_id = ? ORDER BY id ASC",
+        "SELECT role, text FROM messages WHERE conversation_id = ? ORDER BY id DESC LIMIT 50",
         (conversation_id,),
     ) as cur:
         rows = await cur.fetchall()
     result = []
-    for role, text in rows:
+    for role, text in reversed(rows):
         # Map DB roles to AI roles
         if role == "ai":
             result.append({"role": "assistant", "content": text})

@@ -130,10 +130,11 @@ async def handle_close(
     closed_by = callback.from_user.id
     await queries.set_conversation_status(db, conv_id, "closed", closed_by=closed_by)
     await callback.answer(t("ticket_closed_admin"))
-    try:
-        await callback.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    if isinstance(callback.message, Message):
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
 
 
 # ── Toggle AI callback ────────────────────────────────────────────────────────
@@ -154,12 +155,13 @@ async def handle_toggle_ai(
     await queries.set_ai_enabled(db, conv_id, new_state)
     label = t("ai_toggled_on") if new_state else t("ai_toggled_off")
     await callback.answer(label)
-    try:
-        await callback.message.edit_reply_markup(
-            reply_markup=admin_ticket_kb(conv_id, ai_enabled=new_state)
-        )
-    except Exception:
-        pass
+    if isinstance(callback.message, Message):
+        try:
+            await callback.message.edit_reply_markup(
+                reply_markup=admin_ticket_kb(conv_id, ai_enabled=new_state)
+            )
+        except Exception:
+            pass
 
 
 # ── Agent replies in admin topic → forward to user ───────────────────────────
