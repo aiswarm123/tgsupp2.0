@@ -111,17 +111,11 @@ class I18nMiddleware(BaseMiddleware):
     @staticmethod
     async def _store_lang(db: Any, telegram_id: int, lang: str) -> None:
         """Persist detected language for returning users only."""
-        # Fix #3: only UPDATE when the row already exists; INSERT OR IGNORE would
-        # silently create an incomplete row — create_user() owns new-user inserts.
-        async with db.execute(
-            "SELECT 1 FROM users WHERE telegram_id = ?", (telegram_id,)
-        ) as cur:
-            exists = await cur.fetchone()
-        if not exists:
-            return
-        await db.execute(
+        # UPDATE is a no-op if the user row doesn't exist yet (first contact);
+        # create_user() in the handler owns new-user inserts.
+        cur = await db.execute(
             "UPDATE users SET language = ? WHERE telegram_id = ?",
             (lang, telegram_id),
         )
-        # Fix #2: commit so the language write is not silently rolled back.
-        await db.commit()
+        if cur.rowcount > 0:
+            await db.commit()

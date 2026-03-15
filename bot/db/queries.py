@@ -13,9 +13,7 @@ async def get_active_group(db: aiosqlite.Connection) -> Optional[dict]:
         "WHERE is_active = 1 AND topic_count < 9500 LIMIT 1"
     ) as cur:
         row = await cur.fetchone()
-    if row is None:
-        return None
-    return {"id": row[0], "telegram_group_id": row[1], "topic_count": row[2]}
+    return dict(row) if row else None
 
 
 async def get_group_by_telegram_id(
@@ -28,14 +26,7 @@ async def get_group_by_telegram_id(
         (telegram_group_id,),
     ) as cur:
         row = await cur.fetchone()
-    if row is None:
-        return None
-    return {
-        "id": row[0],
-        "telegram_group_id": row[1],
-        "topic_count": row[2],
-        "is_active": bool(row[3]),
-    }
+    return dict(row) if row else None
 
 
 async def register_group(db: aiosqlite.Connection, telegram_group_id: int) -> tuple[int, bool]:
@@ -77,6 +68,15 @@ async def get_group_topic_count(db: aiosqlite.Connection, group_id: int) -> int:
     return row[0] if row else 0
 
 
+async def get_group_tg_id(db: aiosqlite.Connection, group_id: int) -> Optional[int]:
+    """Return a group's Telegram chat ID by internal PK, or None."""
+    async with db.execute(
+        "SELECT telegram_group_id FROM admin_groups WHERE id = ?", (group_id,)
+    ) as cur:
+        row = await cur.fetchone()
+    return row[0] if row else None
+
+
 async def get_all_active_group_ids(db: aiosqlite.Connection) -> list[int]:
     async with db.execute(
         "SELECT telegram_group_id FROM admin_groups WHERE is_active = 1"
@@ -87,39 +87,26 @@ async def get_all_active_group_ids(db: aiosqlite.Connection) -> list[int]:
 
 # ── Users ─────────────────────────────────────────────────────────────────────
 
+_USER_COLS = "id, telegram_id, language, group_id, topic_id"
+
+
 async def get_user(db: aiosqlite.Connection, telegram_id: int) -> Optional[dict]:
     async with db.execute(
-        "SELECT id, telegram_id, language, group_id, topic_id FROM users WHERE telegram_id = ?",
+        f"SELECT {_USER_COLS} FROM users WHERE telegram_id = ?",
         (telegram_id,),
     ) as cur:
         row = await cur.fetchone()
-    if row is None:
-        return None
-    return {
-        "id": row[0],
-        "telegram_id": row[1],
-        "language": row[2],
-        "group_id": row[3],
-        "topic_id": row[4],
-    }
+    return dict(row) if row else None
 
 
 async def get_user_by_id(db: aiosqlite.Connection, user_id: int) -> Optional[dict]:
     """Return a user row by internal primary key."""
     async with db.execute(
-        "SELECT id, telegram_id, language, group_id, topic_id FROM users WHERE id = ?",
+        f"SELECT {_USER_COLS} FROM users WHERE id = ?",
         (user_id,),
     ) as cur:
         row = await cur.fetchone()
-    if row is None:
-        return None
-    return {
-        "id": row[0],
-        "telegram_id": row[1],
-        "language": row[2],
-        "group_id": row[3],
-        "topic_id": row[4],
-    }
+    return dict(row) if row else None
 
 
 async def create_user(
@@ -158,9 +145,7 @@ async def get_open_conversation(
         (user_id,),
     ) as cur:
         row = await cur.fetchone()
-    if row is None:
-        return None
-    return {"id": row[0], "status": row[1], "ai_enabled": bool(row[2])}
+    return dict(row) if row else None
 
 
 async def create_conversation(db: aiosqlite.Connection, user_id: int) -> int:
@@ -197,6 +182,15 @@ async def set_conversation_status(
     await db.commit()
 
 
+async def escalate_to_human(db: aiosqlite.Connection, conversation_id: int) -> None:
+    """Disable AI and set status to human in a single commit."""
+    await db.execute(
+        "UPDATE conversations SET ai_enabled = 0, status = 'human' WHERE id = ?",
+        (conversation_id,),
+    )
+    await db.commit()
+
+
 async def get_conversation_by_id(
     db: aiosqlite.Connection, conversation_id: int
 ) -> Optional[dict]:
@@ -205,9 +199,24 @@ async def get_conversation_by_id(
         (conversation_id,),
     ) as cur:
         row = await cur.fetchone()
+    return dict(row) if row else None
+
+
+async def get_user_conv_by_topic(
+    db: aiosqlite.Connection, group_id: int, topic_id: int
+) -> Optional[tuple[int, int]]:
+    """Return (telegram_id, conv_id) for an open conversation in the given group/topic."""
+    async with db.execute(
+        "SELECT u.telegram_id, c.id AS conv_id FROM users u "
+        "JOIN conversations c ON c.user_id = u.id "
+        "WHERE u.group_id = ? AND u.topic_id = ? AND c.status != 'closed' "
+        "ORDER BY c.id DESC LIMIT 1",
+        (group_id, topic_id),
+    ) as cur:
+        row = await cur.fetchone()
     if row is None:
         return None
-    return {"id": row[0], "user_id": row[1], "status": row[2], "ai_enabled": bool(row[3])}
+    return row[0], row[1]
 
 
 # ── Messages ──────────────────────────────────────────────────────────────────

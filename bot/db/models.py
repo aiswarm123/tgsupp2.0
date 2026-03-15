@@ -1,3 +1,5 @@
+import sqlite3
+
 import aiosqlite
 
 
@@ -63,6 +65,6 @@ async def init_db(db_path: str) -> None:
         # Migration: add sender_id to existing databases
         try:
             await db.execute("ALTER TABLE messages ADD COLUMN sender_id INTEGER")
-        except Exception:
+        except sqlite3.OperationalError:
             pass  # Column already exists
         await db.commit()

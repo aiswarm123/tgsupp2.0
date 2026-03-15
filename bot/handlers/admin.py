@@ -8,6 +8,8 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
+from aiogram.filters import Filter
+
 from bot.config import settings
 from bot.db import queries
 from bot.keyboards.inline import admin_ticket_kb
@@ -16,13 +18,18 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+class IsAdmin(Filter):
+    async def __call__(self, message: Message) -> bool:
+        return message.from_user is not None and message.from_user.id in settings.admin_ids
+
+
+_is_admin = IsAdmin()
+
+
 # ── /register_group ───────────────────────────────────────────────────────────
 
-@router.message(Command("register_group"))
+@router.message(Command("register_group"), _is_admin)
 async def cmd_register_group(message: Message, db: aiosqlite.Connection) -> None:
-    if message.from_user.id not in settings.admin_ids:
-        await message.reply("Unauthorized.")
-        return
     chat = message.chat
     if chat.type not in ("supergroup", "group"):
         await message.reply("This command must be used in a forum supergroup.")
@@ -36,7 +43,7 @@ async def cmd_register_group(message: Message, db: aiosqlite.Connection) -> None
 
 # ── /stats ────────────────────────────────────────────────────────────────────
 
-@router.message(Command("stats"))
+@router.message(Command("stats"), _is_admin)
 async def cmd_stats(message: Message, db: aiosqlite.Connection) -> None:
     stats = await queries.get_stats(db)
     avg_rt = stats["avg_response_time"]
@@ -61,13 +68,10 @@ async def cmd_stats(message: Message, db: aiosqlite.Connection) -> None:
 
 # ── /toggle_ai ────────────────────────────────────────────────────────────────
 
-@router.message(Command("toggle_ai"))
+@router.message(Command("toggle_ai"), _is_admin)
 async def cmd_toggle_ai(
     message: Message, db: aiosqlite.Connection, t: Callable[[str], str]
 ) -> None:
-    if message.from_user.id not in settings.admin_ids:
-        await message.reply("Unauthorized.")
-        return
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("Usage: /toggle_ai <user_id>")
@@ -179,21 +183,11 @@ async def handle_admin_reply(
     if admin_group is None:
         return
 
-    # Issue #3: filter by both group_id and topic_id to prevent cross-group
-    # misdelivery when the same topic_id appears in multiple forum groups.
-    async with db.execute(
-        "SELECT u.telegram_id, c.id AS conv_id FROM users u "
-        "JOIN conversations c ON c.user_id = u.id "
-        "WHERE u.group_id = ? AND u.topic_id = ? AND c.status != 'closed' "
-        "ORDER BY c.id DESC LIMIT 1",
-        (admin_group["id"], message.message_thread_id),
-    ) as cur:
-        row = await cur.fetchone()
-
-    if row is None:
+    result = await queries.get_user_conv_by_topic(db, admin_group["id"], message.message_thread_id)
+    if result is None:
         return
 
-    user_telegram_id, conv_id = row[0], row[1]
+    user_telegram_id, conv_id = result
 
     # Issue #12: handle non-text messages (photos, voice, stickers, etc.)
     text = message.text or message.caption or ""
@@ -211,13 +205,11 @@ async def handle_admin_reply(
                 "Failed to forward media message to user %s", user_telegram_id
             )
         await queries.save_message(db, conv_id, "agent", f"[{message.content_type}]")
-        await queries.set_ai_enabled(db, conv_id, False)
-        await queries.set_conversation_status(db, conv_id, "human")
+        await queries.escalate_to_human(db, conv_id)
         return
 
     await queries.save_message(db, conv_id, "agent", text, sender_id=message.from_user.id)
-    await queries.set_ai_enabled(db, conv_id, False)
-    await queries.set_conversation_status(db, conv_id, "human")
+    await queries.escalate_to_human(db, conv_id)
 
     try:
         await bot.send_message(chat_id=user_telegram_id, text=text)

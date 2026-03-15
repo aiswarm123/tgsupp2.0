@@ -24,14 +24,6 @@ _WARN_95 = 9_025
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-async def _get_group_tg_id(db: aiosqlite.Connection, group_id: int) -> Optional[int]:
-    async with db.execute(
-        "SELECT telegram_group_id FROM admin_groups WHERE id = ?", (group_id,)
-    ) as cur:
-        row = await cur.fetchone()
-    return row[0] if row else None
-
-
 async def _maybe_warn_capacity(bot: Bot, db: aiosqlite.Connection, count: int) -> None:
     if _WARN_80 <= count < _WARN_95:
         text = f"⚠️ Admin group is at 80% capacity ({count}/9500 topics)."
@@ -108,33 +100,6 @@ async def _ensure_user_and_conv(
     return user, conv
 
 
-def _message_type_label(message: Message) -> str:
-    """Return a descriptive label for non-text message types."""
-    if message.sticker:
-        return "[sticker]"
-    if message.voice:
-        return "[voice]"
-    if message.video_note:
-        return "[video_note]"
-    if message.video:
-        return "[video]"
-    if message.audio:
-        return "[audio]"
-    if message.photo:
-        return "[photo]"
-    if message.document:
-        return "[document]"
-    if message.animation:
-        return "[animation]"
-    if message.location:
-        return "[location]"
-    if message.contact:
-        return "[contact]"
-    if message.poll:
-        return "[poll]"
-    return "[unsupported]"
-
-
 # ── Handlers ───────────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
@@ -175,10 +140,10 @@ async def _process_user_message(
         await message.answer(t("no_group"))
         return
 
-    text = message.text or message.caption or _message_type_label(message)
+    text = message.text or message.caption or f"[{message.content_type}]"
     await queries.save_message(db, conv["id"], "user", text)
 
-    tg_group_id = await _get_group_tg_id(db, user["group_id"])
+    tg_group_id = await queries.get_group_tg_id(db, user["group_id"])
     if tg_group_id:
         try:
             await bot.forward_message(
@@ -237,8 +202,7 @@ async def handle_escalate(
         await callback.answer(t("already_escalated"), show_alert=True)
         return
 
-    await queries.set_ai_enabled(db, conv["id"], False)
-    await queries.set_conversation_status(db, conv["id"], "human")
+    await queries.escalate_to_human(db, conv["id"])
 
     await callback.answer(t("escalated"))
     try:
@@ -246,7 +210,7 @@ async def handle_escalate(
     except Exception:
         pass
 
-    tg_group_id = await _get_group_tg_id(db, user["group_id"])
+    tg_group_id = await queries.get_group_tg_id(db, user["group_id"])
     if tg_group_id is None:
         return
 
