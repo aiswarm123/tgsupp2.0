@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html
+
 import aiosqlite
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -35,7 +37,7 @@ async def _send_faq_list(message: Message, db: aiosqlite.Connection) -> None:
         return
     text_parts = ["<b>FAQ items:</b>\n"]
     for i, item in enumerate(items, 1):
-        text_parts.append(f"{i}. <b>{item['question']}</b>")
+        text_parts.append(f"{i}. <b>{html.escape(item['question'])}</b>")
     await message.answer("\n".join(text_parts), reply_markup=faq_admin_list_kb(items))
 
 
@@ -93,7 +95,7 @@ async def faq_edit_start(callback: CallbackQuery, state: FSMContext, db: aiosqli
         await callback.answer("FAQ item not found.", show_alert=True)
         return
     await callback.answer()
-    preview = f"<b>Question:</b> {item['question']}\n<b>Answer:</b> {item['answer']}"
+    preview = f"<b>Question:</b> {html.escape(item['question'])}\n<b>Answer:</b> {html.escape(item['answer'])}"
     if item["media_file_id"]:
         preview += "\n(has attached photo)"
     await callback.message.answer(preview)
@@ -153,7 +155,7 @@ async def faq_delete_confirm(callback: CallbackQuery, db: aiosqlite.Connection) 
         return
     await callback.answer()
     await callback.message.answer(
-        f"Delete <b>{item['question']}</b>? Are you sure?",
+        f"Delete <b>{html.escape(item['question'])}</b>? Are you sure?",
         reply_markup=faq_confirm_delete_kb(faq_id),
     )
 
