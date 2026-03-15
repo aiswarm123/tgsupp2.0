@@ -30,6 +30,7 @@ async def _send_claude(history: list[dict], system_prompt: str) -> str:
         max_tokens=1024,
         system=system_prompt,
         messages=history,
+        timeout=30,
     )
     return response.content[0].text
 
@@ -39,5 +40,6 @@ async def _send_openai(history: list[dict], system_prompt: str) -> str:
     response = await _openai_client.chat.completions.create(
         model=settings.ai_model,
         messages=messages,
+        timeout=30,
     )
     return response.choices[0].message.content
