@@ -15,5 +15,9 @@ class Settings(BaseSettings):
     admin_ids: List[int] = []
     log_level: str = "INFO"
 
+    @property
+    def ai_available(self) -> bool:
+        return bool(self.ai_api_key)
+
 
 settings = Settings()

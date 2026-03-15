@@ -155,7 +155,7 @@ async def _process_user_message(
         except Exception:
             logger.exception("Failed to forward message to admin topic for user %s", tg_user.id)
 
-    if not conv["ai_enabled"]:
+    if not settings.ai_available or not conv["ai_enabled"]:
         return
 
     history = await queries.get_conversation_history(db, conv["id"])
@@ -164,6 +164,9 @@ async def _process_user_message(
     except Exception:
         logger.exception("AI call failed for conversation %s", conv["id"])
         await message.answer(t("ai_unavailable"), reply_markup=talk_to_human_kb())
+        return
+
+    if ai_text is None:
         return
 
     await queries.save_message(db, conv["id"], "ai", ai_text)
